@@ -1,7 +1,7 @@
 { mkDerivation, aeson, base, bytestring, containers, lens, lib
 , modern-uri, network-uri, parsec, parser-combinators, text
 , transformers, pkgs
-, scrappy-core ? pkgs.haskellPackage.callPackage (pkgs.fetchFromGitHub {
+, scrappy-core ? pkgs.haskellPackages.callPackage (pkgs.fetchFromGitHub {
     owner = "Ace-Interview-Prep";
     repo = "scrappy-core";
     rev = "913670f2f83cabb2b56302e17604ec488e89da7b";
