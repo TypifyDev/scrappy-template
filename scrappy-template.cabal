@@ -3,7 +3,7 @@ name:                scrappy-template
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.1.0.4
+version:             0.1.0.0
 synopsis:            html pattern matching library and high-level interface concurrent requests lib for webscraping
 description:
         Scrappy is meant to be a fully expressive library for all aspects of webscraping.
@@ -38,21 +38,32 @@ stability:           Experimental
 category:            Webscraping
 build-type:          Simple
 extra-source-files:  README.MD
+source-repository head
+  type: git                                
+  location: https://github.com/Ace-Interview-Prep/scrappy-template                     
 library
+  ghc-options:        -Wall -Werror
   exposed-modules:    Scrappy.Template
-  build-depends:       base
-                     , aeson
-                     , bytestring
-                     , containers
-                     , lens
-                     , modern-uri
-                     -- ^ less maintained?
-                     , network-uri
-                     , parsec
-                     , parser-combinators
-                     , text
-                     , transformers
-                     , scrappy-core
+  build-depends: base
+               , containers
+               , parsec
+               , scrappy-core
+               , text
+
                      
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+test-suite scrappy-template-tests
+  ghc-options:        -Wall -Werror
+  type:               exitcode-stdio-1.0
+  main-is:            Main.hs
+  other-modules:      TemplateTest
+  hs-source-dirs:     test
+  default-language:    Haskell2010
+  build-depends:      base
+                    , scrappy-template
+                    , hspec
+                    , containers
+                    , parsec
+                    , temporary
