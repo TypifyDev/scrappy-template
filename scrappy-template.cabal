@@ -27,12 +27,12 @@ description:
         access to information on sites
 
 -- URL for the project homepage or repository.
-homepage:            https://github.com/Ace-Interview-Prep/scrappy
+homepage:            https://github.com/TypifyDev/scrappy
 license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Galen Sprout
 maintainer:          galen.sprout@gmail.com
-bug-reports:         https://github.com/Ace-Interview-Prep/scrappy/issues
+bug-reports:         https://github.com/TypifyDev/scrappy/issues
 x-curated:           uncurated-seeking-adoption
 stability:           Experimental
 category:            Webscraping
@@ -40,7 +40,7 @@ build-type:          Simple
 extra-source-files:  README.MD
 source-repository head
   type: git                                
-  location: https://github.com/Ace-Interview-Prep/scrappy-template                     
+  location: https://github.com/TypifyDev/scrappy-template                     
 library
   ghc-options:        -Wall -Werror
   exposed-modules:    Scrappy.Template
