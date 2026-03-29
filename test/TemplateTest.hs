@@ -1,36 +1,79 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE BangPatterns #-}
+
+-- |
+-- Module      : TemplateTest
+-- Description : Tests for Scrappy.Template parser and substitution engine
+-- Copyright   : (c) Galen Sprout, 2024
+-- License     : BSD-3-Clause
+-- Maintainer  : galen.sprout@gmail.com
+--
+-- Comprehensive test suite covering parser combinators, name validation,
+-- template parsing with default and custom delimiters, string and file
+-- substitution, and integration\/stress tests.
+
+-- | @since 0.1.0.0
 module TemplateTest (spec) where
 
 import Test.Hspec
-import Control.Exception (evaluate)
+  ( Spec, describe, it, shouldBe, shouldSatisfy
+  , expectationFailure )
+import Control.Exception (evaluate, try, ErrorCall (..))
 import System.IO.Temp (withSystemTempFile)
 import System.IO (hPutStr, hFlush, hClose)
 
 import Text.Parsec (parse, eof, char, letter)
 
 import Scrappy.Template
+  ( manyTill_, between', between1, validName, Name
+  , templateParserWith, unTemplateWith, unTemplateFileWith
+  , templateParser, unTemplate, unTemplateFile, templateSyntaxExample )
 
 import qualified Data.Map as Map
+import Data.List (isInfixOf)
 
+-- | @since 0.1.0.0
 parseOnly :: String -> Either String Name
-parseOnly input = case parse (templateParser <* eof) "" input of
-  Left err -> Left (show err)
-  Right n  -> Right n
+parseOnly input =
+  let !s = "" :: String
+  in  case parse (templateParser <* eof) s input of
+        Left err -> let !msg = show err in Left msg
+        Right n  -> Right n
 
+-- | @since 0.1.0.0
 parseOnlyWith :: String -> String -> String -> Either String Name
-parseOnlyWith open close input = case parse (templateParserWith open close <* eof) "" input of
-  Left err -> Left (show err)
-  Right n  -> Right n
+parseOnlyWith open close input =
+  let !s = "" :: String
+  in  case parse (templateParserWith open close <* eof) s input of
+        Left err -> let !msg = show err in Left msg
+        Right n  -> Right n
 
+-- | @since 0.1.0.0
 parseValidName :: String -> Either String Name
-parseValidName input = case parse (validName <* eof) "" input of
-  Left err -> Left (show err)
-  Right n  -> Right n
+parseValidName input =
+  let !s = "" :: String
+  in  case parse (validName <* eof) s input of
+        Left err -> let !msg = show err in Left msg
+        Right n  -> Right n
 
+-- | Check whether an Either is Left, handling both branches.
+--
+-- @since 0.1.0.0
 isLeft :: Either a b -> Bool
 isLeft (Left _) = True
-isLeft _        = False
+isLeft (Right _) = False
 
+-- | Force a string to its full spine and return it.
+--
+-- @since 0.1.0.0
+forceStr :: String -> String
+forceStr [] = []
+forceStr (x:xs) = x `seq` forceStr xs `seq` (x:xs)
+{-# INLINE forceStr #-}
+
+-- | Full test suite for Scrappy.Template.
+--
+-- @since 0.1.0.0
 spec :: Spec
 spec = do
 
@@ -39,33 +82,42 @@ spec = do
   -- =========================================================================
   describe "manyTill_" $ do
     it "returns accumulated results and the end value" $ do
-      let p = parse (manyTill_ (char 'a') (char 'b')) "" "aaab"
+      let !s = "" :: String
+          p = parse (manyTill_ (char 'a') (char 'b')) s "aaab"
       p `shouldBe` Right ("aaa", 'b')
 
     it "returns empty list when end matches immediately" $ do
-      let p = parse (manyTill_ (char 'a') (char 'b')) "" "b"
+      let !s = "" :: String
+          !pa = char 'a'
+          p = parse (manyTill_ pa (char 'b')) s "b"
       p `shouldBe` Right ("", 'b')
 
     it "returns single element" $ do
-      let p = parse (manyTill_ (char 'a') (char 'b')) "" "ab"
+      let !s = "" :: String
+          p = parse (manyTill_ (char 'a') (char 'b')) s "ab"
       p `shouldBe` Right ("a", 'b')
 
   describe "between'" $ do
     it "collects multiple inner matches between delimiters" $ do
-      let p = parse (between' (char '(') (char ')') letter) "" "(abc)"
+      let !s = "" :: String
+          p = parse (between' (char '(') (char ')') letter) s "(abc)"
       p `shouldBe` Right "abc"
 
     it "returns empty list when no inner matches" $ do
-      let p = parse (between' (char '(') (char ')') letter) "" "()"
+      let !s = "" :: String
+          !inner = letter
+          p = parse (between' (char '(') (char ')') inner) s "()"
       p `shouldBe` Right ""
 
     it "handles single inner match" $ do
-      let p = parse (between' (char '(') (char ')') letter) "" "(x)"
+      let !s = "" :: String
+          p = parse (between' (char '(') (char ')') letter) s "(x)"
       p `shouldBe` Right "x"
 
   describe "between1" $ do
     it "matches exactly one element between open and close" $ do
-      let p = parse (between1 (char '(') (char ')') letter) "" "(x)"
+      let !s = "" :: String
+          p = parse (between1 (char '(') (char ')') letter) s "(x)"
       p `shouldBe` Right 'x'
 
   -- =========================================================================
@@ -111,6 +163,9 @@ spec = do
 
     it "rejects a dot-start" $ do
       parseValidName ".name" `shouldSatisfy` isLeft
+
+    it "isLeft returns False for Right values" $ do
+      isLeft (Right "x" :: Either String String) `shouldBe` False
 
   -- =========================================================================
   -- templateParser (default {{>>= syntax)
@@ -166,10 +221,12 @@ spec = do
       parseOnlyWith "<<<START>>>" "<<<END>>>" "<<<START>>>hello<<<END>>>" `shouldBe` Right "hello"
 
     it "rejects wrong delimiter" $ do
-      parseOnlyWith "{{::=" "}}" "{{>>=name}}" `shouldSatisfy` isLeft
+      let !close' = forceStr "}}"
+      parseOnlyWith "{{::=" close' "{{>>=name}}" `shouldSatisfy` isLeft
 
     it "rejects invalid name even with correct delimiters" $ do
-      parseOnlyWith "{{::=" "}}" "{{::=123}}" `shouldSatisfy` isLeft
+      let !close' = forceStr "}}"
+      parseOnlyWith "{{::=" close' "{{::=123}}" `shouldSatisfy` isLeft
 
   -- =========================================================================
   -- unTemplate (default syntax)
@@ -204,27 +261,32 @@ spec = do
       unTemplate m "{{>>=all}}" `shouldBe` "everything"
 
     it "returns input unchanged when no placeholders exist" $ do
-      let m = Map.fromList [("unused", "val")]
-      unTemplate m "no slots here" `shouldBe` "no slots here"
+      let !m = Map.fromList [("unused", "val")]
+      Map.size m `seq` unTemplate m "no slots here" `shouldBe` "no slots here"
 
     it "returns empty string for empty input" $ do
-      let m = Map.fromList [("key", "val")]
-      unTemplate m "" `shouldBe` ""
+      let !m = Map.fromList [("key", "val")]
+      Map.size m `seq` unTemplate m "" `shouldBe` ""
 
     it "returns empty for empty input and empty map" $ do
-      let m = Map.empty :: Map.Map String String
-      unTemplate m "" `shouldBe` ""
+      let !m = (Map.empty :: Map.Map String String)
+      Map.size m `seq` unTemplate m "" `shouldBe` ""
 
     it "passes through when map is empty and no placeholders" $ do
-      let m = Map.empty :: Map.Map String String
-      unTemplate m "just text" `shouldBe` "just text"
+      let !m = (Map.empty :: Map.Map String String)
+      Map.size m `seq` unTemplate m "just text" `shouldBe` "just text"
 
-    it "errors on a missing key" $ do
-      let m = Map.empty :: Map.Map String String
-      evaluate (unTemplate m "{{>>=missing}}") `shouldThrow` anyErrorCall
+    it "errors on a missing key with correct message" $ do
+      let !m = (Map.empty :: Map.Map String String)
+      result <- Map.size m `seq` try (evaluate (unTemplate m "{{>>=missing}}"))
+      case result of
+        Left (ErrorCall msg) -> msg `shouldSatisfy` \s ->
+          "missing" `isInfixOf` s && "not defined" `isInfixOf` s
+        Right _ -> expectationFailure "expected error but got success"
 
     it "substitution value containing delimiter-like text is NOT re-expanded" $ do
-      let m = Map.fromList [("x", "{{>>=y}}"), ("y", "NOPE")]
+      let !nope = forceStr "NOPE"
+          m = Map.fromList [("x", "{{>>=y}}"), ("y", nope)]
       unTemplate m "{{>>=x}}" `shouldBe` "{{>>=y}}"
 
     it "substitution value can be empty string" $ do
@@ -243,13 +305,12 @@ spec = do
       unTemplate m "!@#{{>>=x}}$%^" `shouldBe` "!@#val$%^"
 
     it "partial template syntax {{ is left alone" $ do
-      let m = Map.empty :: Map.Map String String
-      unTemplate m "text {{ not a template" `shouldBe` "text {{ not a template"
+      let !m = (Map.empty :: Map.Map String String)
+      Map.size m `seq` unTemplate m "text {{ not a template" `shouldBe` "text {{ not a template"
 
     it "incomplete template {{>>= without closing is left alone" $ do
-      let m = Map.fromList [("x", "val")]
-      -- {{>>=x without }} — streamEdit won't match, so it passes through
-      unTemplate m "text {{>>=x no close" `shouldBe` "text {{>>=x no close"
+      let !m = Map.fromList [("x", "val")]
+      Map.size m `seq` unTemplate m "text {{>>=x no close" `shouldBe` "text {{>>=x no close"
 
     it "three distinct placeholders in a sentence" $ do
       let m = Map.fromList [("greeting", "Hello"), ("name", "Alice"), ("punct", "!")]
@@ -273,17 +334,21 @@ spec = do
       unTemplateWith "{%" "%}" m "value: {%x%}" `shouldBe` "value: 42"
 
     it "default syntax placeholders are ignored when using custom delimiters" $ do
-      let m = Map.fromList [("x", "val")]
-      unTemplateWith "{{::=" "}}" m "{{>>=x}}" `shouldBe` "{{>>=x}}"
+      let !m = Map.fromList [("x", "val")]
+          !close' = forceStr "}}"
+      Map.size m `seq` unTemplateWith "{{::=" close' m "{{>>=x}}" `shouldBe` "{{>>=x}}"
 
     it "custom syntax placeholders are ignored by default unTemplate" $ do
-      let m = Map.fromList [("x", "val")]
-      unTemplate m "{{::=x}}" `shouldBe` "{{::=x}}"
+      let !m = Map.fromList [("x", "val")]
+      Map.size m `seq` unTemplate m "{{::=x}}" `shouldBe` "{{::=x}}"
 
-    it "missing key error includes correct custom delimiters" $ do
-      let m = Map.empty :: Map.Map String String
-      evaluate (unTemplateWith "{{::=" "}}" m "{{::=missing}}")
-        `shouldThrow` anyErrorCall
+    it "missing key error with custom delimiters includes correct message" $ do
+      let !m = (Map.empty :: Map.Map String String)
+      result <- Map.size m `seq` try (evaluate (unTemplateWith "{{::=" "}}" m "{{::=missing}}"))
+      case result of
+        Left (ErrorCall msg) -> msg `shouldSatisfy` \s ->
+          "missing" `isInfixOf` s && "not defined" `isInfixOf` s
+        Right _ -> expectationFailure "expected error but got success"
 
     it "multiple custom-delimited placeholders" $ do
       let m = Map.fromList [("a", "1"), ("b", "2"), ("c", "3")]
@@ -294,8 +359,9 @@ spec = do
       unTemplateWith "[" "]" m "[r] and [r]" `shouldBe` "repeat and repeat"
 
     it "empty map with no placeholders and custom delimiters" $ do
-      let m = Map.empty :: Map.Map String String
-      unTemplateWith "{%" "%}" m "no templates" `shouldBe` "no templates"
+      let !m = (Map.empty :: Map.Map String String)
+          !close' = forceStr "%}"
+      Map.size m `seq` unTemplateWith "{%" close' m "no templates" `shouldBe` "no templates"
 
   -- =========================================================================
   -- unTemplateFile / unTemplateFileWith
@@ -315,8 +381,8 @@ spec = do
         hPutStr h "plain text"
         hFlush h
         hClose h
-        let m = Map.empty :: Map.Map String String
-        result <- unTemplateFile m fp
+        let !m = (Map.empty :: Map.Map String String)
+        result <- Map.size m `seq` unTemplateFile m fp
         result `shouldBe` "plain text"
 
   describe "unTemplateFileWith" $ do
@@ -343,9 +409,9 @@ spec = do
   -- =========================================================================
   describe "integration" $ do
     it "templateSyntaxExample parses with templateParser" $ do
-      -- templateSyntaxExample is "{{>>=name}}"
-      case parse (templateParser <* eof) "" templateSyntaxExample of
-        Left err -> expectationFailure (show err)
+      let !s = "" :: String
+      case parse (templateParser <* eof) s templateSyntaxExample of
+        Left err -> expectationFailure $! show err
         Right n  -> n `shouldBe` "name"
 
     it "unTemplate handles all valid name character types" $ do
@@ -376,6 +442,3 @@ spec = do
       -- Second pass: substitute custom
       let pass2 = unTemplateWith "{{::=" "}}" mCustom pass1
       pass2 `shouldBe` "DEFAULT and CUSTOM"
-
--- Re-export parsec's char and letter for use in tests
--- (these are already available via Text.Parsec import in the test)
