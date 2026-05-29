@@ -1,6 +1,7 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE CPP               #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 
 -- |
 -- Module      : Scrappy.Template
@@ -41,6 +42,8 @@ import Text.Parsec
 import Control.Applicative (liftA2)
 #endif
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 
 
 -- TODO: move manyTill_ , between', between1 into Scrappy.ParsecExtra
@@ -81,22 +84,22 @@ validName :: Stream s m Char => ParsecT s u m Name
 validName = do
   first_ <- letter <|> char '_' <|> char '-'
   rest <- many $ alphaNum <|> char '_' <|> char '-'
-  pure $ first_ : rest
+  pure $ T.pack (first_ : rest)
 
 
 -- | A template placeholder name (e.g. @\"name\"@ in @{{>>=name}}@).
 --
 -- @since 0.1.0.0
-type Name = String
+type Name = T.Text
 
 -- | Template parser parameterized by open\/close delimiters.
 --
 -- @templateParserWith \"{{>>=\" \"}}\"@ is equivalent to 'templateParser'.
 --
 -- @since 0.1.0.0
-templateParserWith :: Stream s m Char => String -> String -> ParsecT s u m Name
+templateParserWith :: Stream s m Char => T.Text -> T.Text -> ParsecT s u m Name
 templateParserWith open close =
-  between1 (string open) (string close) validName
+  between1 (string $ T.unpack open) (string $ T.unpack close) validName
 
 -- | Default template parser using @{{>>=name}}@ syntax.
 --
@@ -120,20 +123,21 @@ templateSyntaxExample = "{{>>=name}}"
 -- Calls 'error' if a placeholder references a name not present in the map.
 --
 -- @since 0.1.0.0
-unTemplateWith :: String -> String -> Map.Map String String -> String -> String
-unTemplateWith open close tmplMap input = streamEdit (templateParserWith open close) mapLookup input
+unTemplateWith :: T.Text -> T.Text -> Map.Map T.Text T.Text -> T.Text -> T.Text
+unTemplateWith open close tmplMap input =
+  streamEdit (templateParserWith open close) mapLookup input
   where
-    mapLookup :: Name -> String
+    mapLookup :: Name -> T.Text
     mapLookup n = case Map.lookup n tmplMap of
       Just v -> v
-      Nothing -> error $! "name " <> open <> n <> close <> " not defined"
+      Nothing -> error $! T.unpack ("name " <> open <> n <> close <> " not defined")
 
 -- | Replace all @{{>>=name}}@ occurrences in the input using the map.
 --
 -- Calls 'error' if a placeholder references a name not present in the map.
 --
 -- @since 0.1.0.0
-unTemplate :: Map.Map String String -> String -> String
+unTemplate :: Map.Map T.Text T.Text -> T.Text -> T.Text
 unTemplate = unTemplateWith "{{>>=" "}}"
 
 -- | Like 'unTemplateWith' but reads from a file. Parameterized by delimiters.
@@ -141,9 +145,9 @@ unTemplate = unTemplateWith "{{>>=" "}}"
 -- TODO: make this catchable as an IOError
 --
 -- @since 0.1.0.0
-unTemplateFileWith :: String -> String -> Map.Map String String -> FilePath -> IO String
+unTemplateFileWith :: T.Text -> T.Text -> Map.Map T.Text T.Text -> FilePath -> IO T.Text
 unTemplateFileWith open close tmplMap fp = do
-  s <- readFile fp
+  s <- TIO.readFile fp
   pure $ unTemplateWith open close tmplMap s
 
 -- | Like 'unTemplate' but reads from a file.
@@ -151,5 +155,5 @@ unTemplateFileWith open close tmplMap fp = do
 -- TODO: make this catchable as an IOError
 --
 -- @since 0.1.0.0
-unTemplateFile :: Map.Map String String -> FilePath -> IO String
+unTemplateFile :: Map.Map T.Text T.Text -> FilePath -> IO T.Text
 unTemplateFile = unTemplateFileWith "{{>>=" "}}"
